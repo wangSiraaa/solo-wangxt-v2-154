@@ -1,0 +1,50 @@
+# 一鍵啟動：PostgreSQL + FastAPI + Vue（後端托管）+ CollateX
+#
+#   docker compose up --build
+#
+# CollateX 官方提供可獨立運行的 REST/CLI 分發，但各鏡像維護不一。
+# 此處 collatex 服務為「接入點」：
+#   * 請把 image 換成你實際使用的 CollateX webservice 鏡像，
+#     並讓它在 7369 埠提供 /collate；
+#   * 該服務不可達時，後端會自動退回內建 NW 比對器，
+#     每次 run 的 engine/engine_detail 都標明實際來源，不影響使用。
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: collator
+      POSTGRES_PASSWORD: collator
+      POSTGRES_DB: collation
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collator -d collation"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  collatex:
+    # TODO: 換成你的 CollateX REST 鏡像（需暴露 POST /collate）
+    image: collatex/webservice:latest
+    ports:
+      - "7369:7369"
+    profiles: ["collatex"]     # 預設不啟動：docker compose --profile collatex up
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://collator:collator@db:5432/collation
+      COLLATEX_URL: http://collatex:7369
+      SEED_DEMO: "1"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
